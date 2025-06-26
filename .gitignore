@@ -7,3 +7,6 @@ reddit-env/
 # Python cache files
 __pycache__/
 
+# SQL database
+*.db
+
