@@ -1,0 +1,9 @@
+# .env file
+.env
+
+# venv
+reddit-env/
+
+# Python cache files
+__pycache__/
+
