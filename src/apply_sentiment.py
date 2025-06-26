@@ -1,12 +1,14 @@
 import os
+# prevent Rust tokenizer parallelism issues
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+import pandas as pd
+from tqdm.auto import tqdm
+from transformers import pipeline
+from sqlalchemy import create_engine
+import torch
 
 def main():
-    import pandas as pd
-    from tqdm.auto import tqdm
-    from transformers import pipeline
-    from sqlalchemy import create_engine
-    import torch
-
     # Set up the database connection
     DB_PATH = "sqlite:///reddit_posts.db"
     engine = create_engine(DB_PATH)
@@ -15,11 +17,15 @@ def main():
     df = pd.read_sql("posts_clean", engine)
     print(f"Loaded {len(df)} posts from the database.")
 
+    # 2. Select device: GPU (cuda:0) if available
+    device = 0 if torch.cuda.is_available() else -1
+    print(f"Using device: {'cuda:0' if device==0 else 'cpu'}")
+
     # Initialize the sentiment analysis pipeline
     sentiment_pipeline = pipeline(
         "sentiment-analysis",
         model="distilbert-base-uncased-finetuned-sst-2-english",
-        device= -1
+        device=device,
     )
 
     # Apply in batches
@@ -28,13 +34,13 @@ def main():
     for i  in tqdm(range(0, len(df), batch_size), desc="Sentiment Batches"):
         batch = df.iloc[i:i + batch_size]
         texts = (batch['title'] + ". " + batch['selftext']).tolist()
-        outs = sentiment_pipeline(texts, truncation=True)
-        for idx, out in enumerate(outs):
+        outputs = sentiment_pipeline(texts, truncation=True)
+        for idx, out in zip(batch.index, outputs):
             results.append({
-                "id":          df.at[idx, "id"],
-                "date":        df.at[idx, "date"],
-                "label":       out["label"],        # “POSITIVE” or “NEGATIVE”
-                "score":       float(out["score"])  # confidence
+                "id": df.at[idx, "id"],
+                "date": df.at[idx, "date"],
+                "label": out["label"],
+                "score": float(out["score"])  
             })
 
     # Convert results to DataFrame
