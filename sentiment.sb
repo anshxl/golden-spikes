@@ -15,4 +15,4 @@ module load CUDA/12.4.0
 # Activate env
 conda activate reddit-env
 
-python -m src.apply_sentiment.py
+python -m src.apply_sentiment
