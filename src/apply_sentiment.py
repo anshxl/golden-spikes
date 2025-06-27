@@ -3,7 +3,7 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import pandas as pd
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from transformers import pipeline
 from sqlalchemy import create_engine
 import torch
