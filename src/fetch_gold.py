@@ -23,7 +23,7 @@ metadata.create_all(engine)
 # Function to fetch gold prices
 def fetch_and_store(
         ticker: str = "GC=F",
-        period: str = "2y",
+        period: str = "6y",
         interval: str = "1d",
 ):
     df = yf.download("GC=F", period=period, interval=interval)
