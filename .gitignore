@@ -12,3 +12,7 @@ __pycache__/
 
 # DS_Store files
 .DS_Store
+
+# .db files
+*.sqlite3
+reddit_posts.db
