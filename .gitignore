@@ -10,3 +10,5 @@ __pycache__/
 # SQL database
 *.db
 
+# DS_Store files
+.DS_Store
