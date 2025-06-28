@@ -16,3 +16,9 @@ __pycache__/
 # .db files
 *.sqlite3
 reddit_posts.db
+
+# Data files
+data/
+
+# logs
+logs/
