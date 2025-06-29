@@ -3,6 +3,7 @@
 
 # venv
 reddit-env/
+labelstud/
 
 # Python cache files
 __pycache__/
