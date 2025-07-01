@@ -12,7 +12,7 @@ comments = pd.read_sql("comments_labeled", engine)
 # Define strata and sample size
 TARGET_SUBS = ['geopolitics','PoliticalDiscussion']
 LABELS = ['positive', 'negative', 'neutral']
-N_PER_CELL = 200
+N_PER_CELL = 1200
 
 # def stratified_sample(df, source_label):
 #     samples = []
