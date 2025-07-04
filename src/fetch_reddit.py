@@ -1,3 +1,4 @@
+## --- Discarded Script: No longer using PRAW for fetching Reddit posts ---
 import os
 import time
 from datetime import datetime
