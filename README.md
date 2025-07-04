@@ -1,4 +1,4 @@
-````markdown
+```markdown
 # Reddit Sentiment vs. Gold-Price Signal Project
 
 ## 🧭 Project Overview
@@ -27,7 +27,7 @@ pip install \
   praw sqlalchemy pandas numpy matplotlib \
   zstandard ftfy nltk vaderSentiment \
   transformers torch langchain llama-cpp-python
-````
+```
 
 * **NLTK** data:
 
