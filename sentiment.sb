@@ -2,10 +2,10 @@
 #SBATCH --job-name=hf-sentiment
 #SBATCH --ntasks=4
 #SBATCH --gpus=v100:1
-#SBATCH --mem=5Gb
-#SBATCH --time=00:10:00
-#SBATCH --output=logs/train-%j.out
-#SBATCH --error=logs/train-%j.err
+#SBATCH --mem=10Gb
+#SBATCH --time=05:00:00
+#SBATCH --output=logs/fine-tune-train-%j.out
+#SBATCH --error=logs/fine-tune-train-%j.err
 
 # Load modules
 module purge
@@ -15,4 +15,4 @@ module load CUDA/12.4.0
 # Activate env
 conda activate reddit-env
 
-python -m src.apply_sentiment
+python -m src.train
