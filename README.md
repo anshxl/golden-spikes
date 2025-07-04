@@ -1,4 +1,3 @@
-```markdown
 # Reddit Sentiment vs. Gold-Price Signal Project
 
 ## 🧭 Project Overview
