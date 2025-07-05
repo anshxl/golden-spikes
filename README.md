@@ -89,19 +89,18 @@ Three‐phase training strategy using Hugging Face Transformers:
 
 ```
 ├── data/
-│   ├── raw/              # ZST archives
-│   ├── sqlite/           # Ingested databases
-│   └── gold_futures/     # YFinance CSVs
+│   ├── phase1/           # Weak labels
+│   ├── phase2/           # LLM Labels
+│   └── phase3/           # Gold Standard Labels
 ├── notebooks/            # EDA & analysis
 ├── src/
-│   ├── ingestion/        # ZST → SQLite scripts
-│   ├── preprocessing/    # Cleaning & tokenization
-│   ├── eda/              # EDA scripts & visuals
-│   ├── annotation/       # LLM & manual labeling tools
-│   └── modeling/         # Training & evaluation
-├── models/               # Checkpoints & logs
-├── results/              # Figures & correlation outputs
+│   ├── fetch_gold/        # yfinance API
+│   ├── fetch_torrent/     # ZST -> SQLite
+│   ├── prep_data/         # Basic preprocessing
+│   ├── train/             # Training & evaluation  
+├── models/               # Checkpoints & logs             
 ├── requirements.txt
+├──sentiment.sb            # SLURM Script
 └── README.md
 ```
 
