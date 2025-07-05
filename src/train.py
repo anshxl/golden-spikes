@@ -2,6 +2,11 @@ import pandas as pd
 from transformers import Trainer, TrainingArguments, AutoModelForSequenceClassification, AutoTokenizer
 from datasets import Dataset, DatasetDict
 from sklearn.model_selection import train_test_split
+import torch
+
+print("Torch sees CUDA:", torch.cuda.is_available())
+print("Number of GPUs:", torch.cuda.device_count())
+print("Current device:", torch.cuda.current_device())
 
 # Load in the datasets
 weak_df = pd.read_csv('data/phase1/weak_label.csv')
@@ -74,7 +79,8 @@ for d in [weak_ds, llm_ds, strong_ds]:
     d.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
 
 # Model + Trainer Setup
-model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=3)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=3).to(device)
 
 base_args = dict(
     per_device_train_batch_size=16,
@@ -98,6 +104,8 @@ trainer1 = Trainer(model=model,
                    train_dataset=weak_ds['train'],
                    eval_dataset=weak_ds['validation'],
 )
+# Confirm trainer device
+print("Trainer will run on:", trainer1.args.device)
 trainer1.train()
 
 # Drop weak label dataset from memory
