@@ -100,6 +100,9 @@ trainer1 = Trainer(model=model,
 )
 trainer1.train()
 
+# Drop weak label dataset from memory
+del weak_ds
+
 #Save the model after phase 1
 model.save_pretrained('models/phase1')
 print("Phase 1 training complete!")
