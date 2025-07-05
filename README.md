@@ -1,147 +1,149 @@
-# Reddit Sentiment vs. Gold-Price Signal Project
+# Sentiment Analysis of Reddit Comments and Gold Futures Correlation
 
-## 🧭 Project Overview
+## Table of Contents
 
-We’re building an end-to-end NLP pipeline on a ~2 GB Reddit comments corpus to surface sentiment/volume signals that may correlate with gold‐price movements (and beyond). So far we have:
+* [Project Overview](#project-overview)
+* [Data Collection](#data-collection)
+* [Data Processing](#data-processing)
+* [Exploratory Data Analysis (EDA)](#exploratory-data-analysis-eda)
+* [Sentiment Labeling & Annotation](#sentiment-labeling--annotation)
+* [Model Fine‑Tuning](#model-fine‑tuning)
+* [Future Work](#future-work)
+* [Project Structure](#project-structure)
+* [Installation & Usage](#installation--usage)
+* [Tech Stack](#tech-stack)
+* [License](#license)
 
-1. **Environment Setup**  
-2. **Data Collection & Ingestion**  
-3. **Exploratory Data Analysis**  
-4. **Weak‐Labeling with VADER**  
-5. **Small-Scale LLM Annotation & Comparison**  
-6. **Side-Project: Large-Scale LLM Annotation on HPC**  
-7. **Next Steps & Potential Pivots**
+## Project Overview
 
----
+This project aims to analyze sentiment in Reddit comments across multiple finance‑related subreddits and explore correlations with gold futures prices. It covers end‑to‑end data ingestion, preprocessing, exploratory analysis, annotation, and transformer‑based model fine‑tuning. Downstream applications include predictive trading models and broader sentiment monitoring.
 
-## 1. Environment & Virtualenv
+## Data Collection
 
-```bash
-# Create & activate
-python3.11 -m venv reddit-env
-source reddit-env/bin/activate
+* **Subreddits**: `r/investing`, `r/gold`, `r/politicaldiscussion`, `r/geopolitics`, `r/finance`
+* **Time Range**: Last 2 years
+* **Method**:
 
-# Core dependencies
-pip install \
-  praw sqlalchemy pandas numpy matplotlib \
-  zstandard ftfy nltk vaderSentiment \
-  transformers torch langchain llama-cpp-python
+  1. Initial approach using PRAW (limited to 1,000 results per query).
+  2. Migrated to monthly subreddit dumps via PSAW torrent streams.
+  3. Downloaded Zstandard (`.zst`) archives with Transmission.
+  4. Ingested posts and comments into SQLite databases with custom Python scripts.
+* **Financial Data**: Retrieved gold futures OHLC data using `yfinance`.
+
+## Data Processing
+
+1. **Cleaning**:
+
+   * Removed `[removed]` and `[deleted]` entries.
+   * Combined post titles and bodies; kept comments intact.
+   * Stripped mentions, URLs, HTML entities; normalized whitespace; lowercased text.
+2. **Storage**:
+
+   * Cleaned data stored in SQLite tables for easy querying.
+
+## Exploratory Data Analysis (EDA)
+
+* Analyzed volume trends: daily & weekly post/comment counts.
+* Examined text lengths (character distributions).
+* Extracted top n‑grams (via NLTK vs. `CountVectorizer`).
+* Computed inter‑subreddit correlation matrices.
+* Generated VADER sentiment scores for weak labeling:
+
+  * `score ≥ 0.7` → positive
+  * `score ≤ -0.7` → negative
+  * `|score| ≤ 0.1` → neutral
+* **Findings**:
+
+  * Posts largely neutral (question‑style); comments showed richer sentiment.
+  * Dropped posts and non‑discussion subreddits (`r/investing`, `r/finance`, `r/gold` advice‑seeking) from further analysis.
+  * Final dataset: \~1.7M comments.
+
+## Sentiment Labeling & Annotation
+
+* **Weak Labels**: VADER labels skewed neutral, insufficient nuance.
+* **LLM Annotation**:
+
+  * Sampled 100K representative comments.
+  * Built a TinyLlama annotator using `llama-cpp` for cost‑effective inference.
+  * Generated balanced LLM labels (positive, negative, neutral).
+* **Gold Standard**:
+
+  * Manually annotated 1,500 comments for final evaluation.
+
+## Model Fine‑Tuning (In Progress)
+
+Three‐phase training strategy using Hugging Face Transformers:
+
+1. **Phase I**: Weak labels — 1 epoch, lr=2e‑5
+2. **Phase II**: LLM labels — 1 epoch, lr=1e‑5
+3. **Phase III**: Manual labels — 3 epochs, lr=5e‑6
+
+## Future Work
+
+* Use fine‑tuned model to score full comment corpus.
+* Analyze sentiment–gold futures correlations.
+* Develop a predictive trading signal based on sentiment trends.
+* Extend model to other subreddits or sentiment tasks (political, economic, social).
+
+## Project Structure
+
+```
+├── data/
+│   ├── raw/              # ZST archives
+│   ├── sqlite/           # Ingested databases
+│   └── gold_futures/     # YFinance CSVs
+├── notebooks/            # EDA & analysis
+├── src/
+│   ├── ingestion/        # ZST → SQLite scripts
+│   ├── preprocessing/    # Cleaning & tokenization
+│   ├── eda/              # EDA scripts & visuals
+│   ├── annotation/       # LLM & manual labeling tools
+│   └── modeling/         # Training & evaluation
+├── models/               # Checkpoints & logs
+├── results/              # Figures & correlation outputs
+├── requirements.txt
+└── README.md
 ```
 
-* **NLTK** data:
+## Installation & Usage
 
-  ```python
-  import nltk
-  nltk.download("punkt")
-  nltk.download("stopwords")
-  ```
+1. **Clone repo**: `git clone <repo_url>`
+2. **Setup environment**:
 
----
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. **Data ingestion**:
 
-## 2. Data Collection & Ingestion
+   ```bash
+   python src/ingestion/load_zst.py --input data/raw --db data/sqlite/comments.db
+   ```
+4. **Preprocessing & EDA**:
 
-### 2.1 PRAW → API Limit Hit
+   ```bash
+   jupyter notebook notebooks/eda.ipynb
+   ```
+5. **Annotation**:
 
-* Attempted time-windowed `sub.search(syntax='lucene', time_filter='all')` → 1 000-post cap, no historical backfill.
+   ```bash
+   python src/annotation/llm_annotator.py --sample 100000
+   ```
+6. **Training**:
 
-### 2.2 Pushshift REST → Moderator-Only 404s
+   ```bash
+   python src/modeling/train.py --phase 1
+   ```
 
-* PSAW wrapper failed due to stale endpoints and 404s.
+## Tech Stack
 
-### 2.3 Official Pushshift Monthly Dumps → Torrent
+* **Language & Env**: Python, Jupyter, `venv`
+* **Data**: SQLite, `yfinance`
+* **NLP & Modeling**: PyTorch, Hugging Face Transformers & Datasets, `llama-cpp`
+* **EDA & Visualization**: scikit‑learn, VADER, Matplotlib, NLTK
+* **Version Control**: Git
 
-* Switched to streaming `.zst` from Academic Torrents.
-* **Torrent selective download** by file-priority (GUI or `libtorrent`) to grab only:
+## License
 
-  ```
-  Economics_submissions.zst
-  Investing_submissions.zst
-  Finance_submissions.zst
-  Gold_submissions.zst
-  WallStreetBets_submissions.zst
-  ```
-* **Ingestion script**: line-by-line zstd → batch-insert SQLite `reddit_posts.db`.
-
----
-
-## 3. Basic EDA
-
-* **Counts & Date Ranges**: posts vs. comments per subreddit.
-* **Time-Series Volume**: daily posts/comments, rolling-30d averages.
-* **Text Length Distributions**: char-count histograms.
-* **Token Frequency**: unigrams, bigrams, trigrams after NLTK stop-word removal.
-* **VADER Baseline**:
-
-  * Self-text → \~85 % neutral
-  * Titles → \~45 % neutral
-  * Comments → \~25.8 % neutral
-* **Subreddit Breakdown**: proportions of neg/neu/pos.
-
----
-
-## 4. Weak-Labeling with VADER
-
-```python
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-sid = SentimentIntensityAnalyzer()
-comments["vader_score"] = comments["clean_body"].apply(lambda t: sid.polarity_scores(t)["compound"])
-```
-
-* **Strong labels**:
-
-  * Positive: `score ≥ +0.7`
-  * Negative: `score ≤ –0.7`
-  * Neutral: `|score| ≤ 0.2`
-* Filtered `comments_strong` table saved for sampling.
-
----
-
-## 5. Small-Scale LLM Annotation & Comparison
-
-* Sampled \~7 200 comments stratified by subreddit/weak\_label.
-* Used **GPT-4** via LangChain to label **text\_type** (Opinion/Question/Other) and **sentiment**.
-* **Confusion Matrix** vs. VADER showed VADER overestimates positivity (thanks-signoffs, generic lexicon misses finance nuance).
-* LLM labels far heavier on “Negative” for market commentary → more domain-aware.
-
----
-
-## 6. Side-Project: Large-Scale LLM Annotation on HPC
-
-We’re launching a separate repo to:
-
-1. **Extract** `comments_cleaned` → `comments_to_annotate.csv`
-2. **LangChain + LlamaCpp** GPU pipeline
-
-   * `n_gpu_layers`, `n_batch` for GPU acceleration
-   * `SQLiteCache` for memoization
-   * `ThreadPoolExecutor` for parallelism
-3. **Annotate millions** of comments efficiently
-4. **Output** `comments_llm_annotated.csv` for downstream modeling
-
----
-
-## 7. Next Steps & Potential Pivots
-
-1. **Model Training**
-
-   * Fine-tune a small Transformer head on:
-
-     * LLM‐pseudo-labels (weak pre-train)
-     * Human gold-set (strong fine-tune)
-2. **Daily Feature Aggregation**
-
-   * `comment_count`, `avg_sentiment`, `% positive`, rolling stats
-3. **Econometric Testing**
-
-   * Correlation, Granger causality, ARIMAX on gold returns
-4. **Prototype Dashboard & Alerts**
-
-   * Streamlit or Dash
-5. **Potential Pivots**
-
-   * Apply the same pipeline to other asset classes or macro topics
-   * Topic modeling on the corpus for broader socio-economic insights
-
----
-
-**We have a robust ingestion & EDA foundation, validated our weak-label vs. LLM pipeline, and are now scaling LLM annotation on HPC to power our production NLP model—anchored to gold price insights but flexible for new directions.**
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
