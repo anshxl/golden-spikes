@@ -82,7 +82,7 @@ base_args = dict(
     fp16=True,
     no_cuda=False,
     gradient_accumulation_steps=1,
-    evaluation_strategy='epoch',
+    eval_strategy='epoch',
     load_best_model_at_end=True,
     seed=42
 )
