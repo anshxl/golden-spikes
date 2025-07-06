@@ -38,3 +38,6 @@ models/
 
 # data
 data/
+
+# src files
+src/fetch_reddit.py
