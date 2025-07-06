@@ -32,3 +32,9 @@ src/apply_sentiment.py
 src/split_data.py
 
 label_app.py
+
+# models
+models/
+
+# data
+data/
