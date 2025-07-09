@@ -1,11 +1,22 @@
 import pandas as pd
 from transformers import Trainer, TrainingArguments, AutoModelForSequenceClassification, AutoTokenizer, EarlyStoppingCallback
-from datasets import Dataset, DatasetDict
-from sklearn.model_selection import train_test_split
+from datasets import Dataset, DatasetDict, concatenate_datasets
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score
 import numpy as np
 import torch
+import torch.nn.functional as F
+
+# Focal Loss function
+def focal_loss(logits, labels, gamma=2.0, alpha=None, class_weight=None):
+    ce = F.cross_entropy(logits, labels, weight=class_weight, reduction="none")
+    pt = torch.exp(-ce)                  # pt = p_t
+    focal = (1 - pt)**gamma * ce         # modulating factor
+    if alpha is not None:
+        a = alpha[labels]                # class-specific alpha
+        focal = a * focal
+    return focal
 
 # Custom Trainer Class
 class WeightedTrainer(Trainer):
@@ -14,13 +25,18 @@ class WeightedTrainer(Trainer):
         self.class_weights = class_weights
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        labels = inputs.get('labels')
-        outputs = model(**inputs)
+        labels = inputs.pop("labels")
+        pw     = inputs.pop("phase_weight")        # shape: (batch,)
+        outputs= model(**inputs)
         logits = outputs.logits
-
-        loss_fct = torch.nn.CrossEntropyLoss(weight=self.class_weights)
-        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
-
+        # combine class-weighted cross-entropy + focal + phase weight
+        losses = focal_loss(
+            logits, labels,
+            gamma=2.0,
+            alpha=torch.tensor([1.0,1.0,1.0]).to(model.device),
+            class_weight=self.class_weights
+        )
+        loss = (losses * pw).mean()
         return (loss, outputs) if return_outputs else loss
     
 # -- Helper Functions -- #
@@ -67,20 +83,10 @@ def main():
                                             test_size=0.1,
                                             stratify=llm_df['llm_label'], 
                                             random_state=42)
-    train_strong, temp_strong = train_test_split(gold_df,
-                                                test_size=0.2,
+    train_strong, test_strong = train_test_split(gold_df,
+                                                test_size=0.1,
                                                 stratify=gold_df['strong_label'],
                                                 random_state=42)
-    val_strong, test_strong = train_test_split(temp_strong,
-                                                test_size=0.5,
-                                                stratify=temp_strong['strong_label'],
-                                                random_state=42)
-
-
-    # Get class weights
-    weak_class_weights = get_class_weights(train_weak['label'], device)
-    llm_class_weights = get_class_weights(train_llm['label'], device)
-    strong_class_weights = get_class_weights(train_strong['label'], device)
 
     # Create HF datasets
     weak_ds = DatasetDict({
@@ -93,10 +99,19 @@ def main():
     })
     strong_ds = DatasetDict({
         'train': Dataset.from_pandas(train_strong),
-        'validation': Dataset.from_pandas(val_strong),
         'test': Dataset.from_pandas(test_strong)
     })
     print("Datasets created successfully!")
+
+    # Add phase weights
+    weak_train = weak_ds['train'].add_column('phase_weight', [0.1] * len(weak_ds['train']))
+    weak_val = weak_ds['validation']
+
+    llm_train = llm_ds['train'].add_column('phase_weight', [0.5] * len(llm_ds['train']))
+    llm_val = llm_ds['validation']
+
+    strong_train = strong_ds['train'].add_column('phase_weight', [1.0] * len(strong_ds['train']))
+    strong_test = strong_ds['test']
 
     # Tokenization
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
@@ -114,11 +129,7 @@ def main():
 
     # Set format for PyTorch
     for d in [weak_ds, llm_ds, strong_ds]:
-        d.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
-
-    # Model + Trainer Setup
-    model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=3).to(device)
-    early_stopping = EarlyStoppingCallback(early_stopping_patience=2)
+        d.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label', 'phase_weight'])
 
     base_args = dict(
         per_device_train_batch_size=16,
@@ -131,91 +142,82 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model='f1',
         greater_is_better=True,
+        num_train_epochs=5,
         seed=42
     )
 
-    # Phase 1
-    args1 = TrainingArguments(output_dir='models/phase1',
-                            learning_rate=2e-5,
-                            num_train_epochs=3,
-                            **base_args)
-    trainer1 = WeightedTrainer(class_weights=weak_class_weights,
-                    model=model,
-                    args=args1,
-                    train_dataset=weak_ds['train'],
-                    eval_dataset=weak_ds['validation'],
-                    compute_metrics=compute_f1,
-                    callbacks=[early_stopping]
-    )
-    # Confirm trainer device
-    print("Trainer will run on:", trainer1.args.device)
-    trainer1.train()
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    fold_scores = []
 
-    # Drop weak label dataset from memory
-    del weak_ds
+    for fold, (train_idx, val_idx) in enumerate(kf.split(strong_train)):
+        gold_train = strong_train.select(train_idx)
+        gold_val = strong_train.select(val_idx)
 
-    #Save the model after phase 1
-    tokenizer.save_pretrained('models/phase1')
-    trainer1.save_model('models/phase1')
-    print("Phase 1 training complete!")
+        # Combine datasets
+        combined_train = concatenate_datasets([weak_train, llm_train, gold_train]).shuffle(seed=42)
 
-    # Phase 2
-    args2 = TrainingArguments(output_dir='models/phase2',
-                            learning_rate=1e-5,
-                            num_train_epochs=3,
-                            weight_decay=0.01,
-                            warmup_ratio=0.1,
-                            lr_scheduler_type='cosine',
-                            **base_args)
-    trainer2 = WeightedTrainer(class_weights=llm_class_weights,
-                    model=model,
-                    args=args2,
-                    train_dataset=llm_ds['train'],
-                    eval_dataset=llm_ds['validation'],
-                    compute_metrics=compute_f1,
-                    callbacks=[early_stopping])
-    trainer2.train()
+        # Get class weights for the combined training set
+        class_weights = get_class_weights(combined_train['label'], device)
 
-    # Save the model after phase 2
-    trainer2.save_model('models/phase2')
-    tokenizer.save_pretrained('models/phase2')
-    print("Phase 2 training complete!")
+        # Model + Trainer Setup
+        model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=3).to(device)
+        early_stopping = EarlyStoppingCallback(early_stopping_patience=2)
 
-    # Phase 3
-    args3 = TrainingArguments(output_dir='models/phase3',
-                            learning_rate=1e-6,
-                            num_train_epochs=5,
-                            weight_decay=0.01,
-                            warmup_ratio=0.1,
-                            lr_scheduler_type='cosine',
-                            **base_args)
-    trainer3 = WeightedTrainer(class_weights=strong_class_weights,
-                        model=model,
-                        args=args3,
-                        train_dataset=strong_ds['train'],
-                        eval_dataset=strong_ds['validation'],
-                        compute_metrics=compute_f1,
-                        callbacks=[early_stopping])
-    trainer3.train()
+        # Freeze first 8 layers
+        for name, param in model.named_parameters():
+            if "layer." in name:
+                layer_num = int(name.split("layer.")[1].split(".")[0])
+                if layer_num < 8:
+                    param.requires_grad = False
+        print("Model layers frozen successfully!")
 
-    # Save the model after phase 3
-    trainer3.save_model('models/phase3')
-    tokenizer.save_pretrained('models/phase3')
-    print("Phase 3 training complete!")
+        # Set up optimizer with two param groups
+        no_decay = ["bias","LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n,p in model.named_parameters() if p.requires_grad and not any(nd in n for nd in no_decay)],
+                "weight_decay": 0.01, "lr": 5e-6
+            },
+            {
+                "params": [p for n,p in model.named_parameters() if p.requires_grad and any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0, "lr": 5e-6
+            },
+            # head-only, larger LR
+            {
+                "params": model.classifier.parameters(),
+                "weight_decay": 0.0, "lr": 2e-5
+            },
+        ]
+        optimizer = torch.optim.AdamW(optimizer_grouped_parameters)
+        trainer = WeightedTrainer(
+            class_weights=class_weights,
+            model=model,
+            args=TrainingArguments(
+                **base_args,
+                output_dir=f'models/fold_{fold}'
+            ),
+            optimizers=(optimizer, None),
+            train_dataset=combined_train,
+            eval_dataset=gold_val,
+            compute_metrics=compute_f1,
+            callbacks=[early_stopping]
+        )
+        print(f"Starting training for fold {fold}...")
+        trainer.train()
+        res = trainer.evaluate()
+        fold_scores.append(res['eval_f1'])
+        print(f"Fold {fold} F1: {res['eval_f1']:.4f}")
+        # Save best model for this fold
+        best_dir = f'models/fold_{fold}/best_model'
+        trainer.save_model(best_dir)
+        tokenizer.save_pretrained(best_dir)
 
-    # Final evaluation on test set
-    test_results = trainer3.evaluate(strong_ds['test'])
-    print("Test Results:", test_results)
-
-    # Save the evaluation results
-    with open('models/phase3/evaluation_results.txt', 'w') as f:
-        f.write(str(test_results))
-
-    # Save the final model
-    trainer3.save_model('models/final_model')
-    tokenizer.save_pretrained('models/final_model')
-    print("Final model saved successfully!")
-
+    print(f"CV mean F1: {np.mean(fold_scores):.4f} ± {np.std(fold_scores):.4f}")
+    
+    # Get best fold
+    best_fold = np.argmax(fold_scores)
+    print(f"Best fold: {best_fold} with F1: {fold_scores[best_fold]:.4f}")
+    
 if __name__ == "__main__":
     main()
     print("Training script completed successfully!")
