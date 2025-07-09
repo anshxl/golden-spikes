@@ -1,148 +1,157 @@
-# Sentiment Analysis of Reddit Comments and Gold Futures Correlation
+# Does Online Political Discourse Affect Gold Futures?
 
 ## Table of Contents
 
-* [Project Overview](#project-overview)
+* [Research Question](#research-question)
 * [Data Collection](#data-collection)
 * [Data Processing](#data-processing)
-* [Exploratory Data Analysis (EDA)](#exploratory-data-analysis-eda)
-* [Sentiment Labeling & Annotation](#sentiment-labeling--annotation)
-* [Model Fine‑Tuning](#model-fine‑tuning)
-* [Future Work](#future-work)
+* [Exploratory Analysis](#exploratory-analysis)
+* [Sentiment Annotation & Modeling](#sentiment-annotation--modeling)
+* [Analysis & Findings](#analysis--findings)
 * [Project Structure](#project-structure)
 * [Installation & Usage](#installation--usage)
 * [Tech Stack](#tech-stack)
 * [License](#license)
 
-## Project Overview
+## Research Question
 
-This project aims to analyze sentiment in Reddit comments across multiple finance‑related subreddits and explore correlations with gold futures prices. It covers end‑to‑end data ingestion, preprocessing, exploratory analysis, annotation, and transformer‑based model fine‑tuning. Downstream applications include predictive trading models and broader sentiment monitoring.
+> **Does the tone and content of online political discussion on Reddit have a measurable relationship with movements in gold futures prices?**
+
+I approach this as an exploratory study rather than a direct prediction exercise, seeking to understand if—and how—volatility in political sentiment aligns with market behavior.
 
 ## Data Collection
 
-* **Subreddits**: `r/investing`, `r/gold`, `r/politicaldiscussion`, `r/geopolitics`, `r/finance`
-* **Time Range**: Last 2 years
-* **Method**:
-
-  1. Initial approach using PRAW (limited to 1,000 results per query).
-  2. Migrated to monthly subreddit dumps via PSAW torrent streams.
-  3. Downloaded Zstandard (`.zst`) archives with Transmission.
-  4. Ingested posts and comments into SQLite databases with custom Python scripts.
-* **Financial Data**: Retrieved gold futures OHLC data using `yfinance`.
+* **Subreddits**: `r/politicaldiscussion`, `r/geopolitics`, plus general finance communities for context.
+* **Time Range**: Two years of posts and comments.
+* **Reddit Data**: Ingested from PSAW monthly archives, cleaned, and stored in SQLite.
+* **Gold Futures**: Daily OHLC from `yfinance`.
 
 ## Data Processing
 
-1. **Cleaning**:
+1. **Cleaning & Preprocessing**
 
-   * Removed `[removed]` and `[deleted]` entries.
-   * Combined post titles and bodies; kept comments intact.
-   * Stripped mentions, URLs, HTML entities; normalized whitespace; lowercased text.
-2. **Storage**:
+   * Drop removed/deleted entries.
+   * Lowercase, strip URLs/mentions, normalize whitespace.
+   * Merge by date and resample to daily frequency.
+2. **Sentiment Metrics**
 
-   * Cleaned data stored in SQLite tables for easy querying.
+   * **Basic**: % positive / negative / neutral.
+   * **Net Sentiment**: `%pos - %neg`.
+   * **Volume Weighting**: scaled by daily comment count.
+   * **Neutral Adjustment**: focus on non-neutral share.
+   * **Volatility**: 7-day rolling std of net sentiment.
+   * **Topic Filtering**: isolate comments mentioning "gold."
 
-## Exploratory Data Analysis (EDA)
+## Exploratory Analysis
 
-* Analyzed volume trends: daily & weekly post/comment counts.
-* Examined text lengths (character distributions).
-* Extracted top n‑grams (via NLTK vs. `CountVectorizer`).
-* Computed inter‑subreddit correlation matrices.
-* Generated VADER sentiment scores for weak labeling:
+* Stationarity tests (ADF) confirmed returns are stationary; sentiment required differencing.
+* Correlation (Pearson/Spearman) at multiple horizons—no strong same‑day relationship.
+* Rolling and cross‑correlation showed only negligible lead/lag signals.
+* Granger causality up to 7 days returned no robust predictive effect.
+* VAR impulse‑response analysis indicated gold returns moderately influence sentiment, not vice versa.
 
-  * `score ≥ 0.7` → positive
-  * `score ≤ -0.7` → negative
-  * `|score| ≤ 0.1` → neutral
-* **Findings**:
+## Sentiment Annotation & Modeling
 
-  * Posts largely neutral (question‑style); comments showed richer sentiment.
-  * Dropped posts and non‑discussion subreddits (`r/investing`, `r/finance`, `r/gold` advice‑seeking) from further analysis.
-  * Final dataset: \~1.7M comments.
+I first annotated our corpus in three tiers—weak labels (VADER), LLM labels, and a small gold standard—but instead of sequential phase-wise fine-tuning, I train one unified classifier via cross-validation on the gold set while leveraging the scale of the proxy labels. To generate LLM labels, I made a TinyLlama-powered annotation app that runs on llama-cpp.
 
-## Sentiment Labeling & Annotation
+1. **Annotation Tiers**  
+   - **Weak Labels** (VADER): ~90% of data, tends toward neutral.  
+   - **LLM Labels**: ~9% of data, more balanced across pos/neg/neu. 
+   - **Gold Labels**: <1% of data, highest fidelity, skewed toward negative.  
 
-* **Weak Labels**: VADER labels skewed neutral, insufficient nuance.
-* **LLM Annotation**:
+2. **Cross-Validation Workflow**  
+   - **5-Fold Gold CV**: Split the gold-standard set into five folds.  
+   - For each fold:  
+     - **Train set** = (all weak + all LLM) ∪ (gold_train fold)  
+     - **Validation set** = gold_val fold (the most trusted labels)  
+     - **Record** F1 on gold_val after training.  
 
-  * Sampled 100K representative comments.
-  * Built a TinyLlama annotator using `llama-cpp` for cost‑effective inference.
-  * Generated balanced LLM labels (positive, negative, neutral).
-* **Gold Standard**:
+3. **Weighting & Loss**  
+   - **Phase weights**: 0.1 for weak, 0.5 for LLM, 1.0 for gold examples.  
+   - **Class weights**: computed on the combined train set to correct imbalance.  
+   - **Loss**: focal + weighted cross-entropy, with early stopping driven by gold_val F1.  
 
-  * Manually annotated 1,500 comments for final evaluation.
+4. **Optimization Details**  
+   - **Layer freezing**: first 8 transformer layers frozen for stability.  
+   - **Differential LRs**: lower LR on frozen/base layers, higher LR on the classifier head.  
 
-## Model Fine‑Tuning (In Progress)
+5. **Model Selection**  
+   - After all folds complete, pick the checkpoint whose fold‐average gold_val F1 is highest.  
+   - That “best” model becomes our final artifact for downstream inference.
 
-Three‐phase training strategy using Hugging Face Transformers:
+This CV-centric approach ensures our tiniest, high-quality gold labels guide validation and selection, while the large proxy datasets supply the data volume needed to train a robust BERT classifier.
 
-1. **Phase I**: Weak labels — 1 epoch, lr=2e‑5
-2. **Phase II**: LLM labels — 1 epoch, lr=1e‑5
-3. **Phase III**: Manual labels — 3 epochs, lr=5e‑6
+## Analysis & Findings
 
-## Future Work
+While the enhanced model yields more balanced and nuanced sentiment scores, our statistical tests still show minimal correlation or predictive power of political sentiment on gold returns.
 
-* Use fine‑tuned model to score full comment corpus.
-* Analyze sentiment–gold futures correlations.
-* Develop a predictive trading signal based on sentiment trends.
-* Extend model to other subreddits or sentiment tasks (political, economic, social).
+**Value of Inquiry**: Even null results inform market‐sentiment research and highlight the challenges of extracting financial signals from social media.
 
 ## Project Structure
 
 ```
 ├── data/
-│   ├── phase1/           # Weak labels
-│   ├── phase2/           # LLM Labels
-│   └── phase3/           # Gold Standard Labels
-├── notebooks/            # EDA & analysis
+│   ├── raw/            # Original archives
+│   ├── processed/      # Cleaned daily metrics
+│   └── annotations/    # phase1/2/3 CSVs
+├── notebooks/          # EDA & correlation analyses
 ├── src/
-│   ├── fetch_gold/        # yfinance API
-│   ├── fetch_torrent/     # ZST -> SQLite
-│   ├── prep_data/         # Basic preprocessing
-│   ├── train/             # Training & evaluation  
-├── models/               # Checkpoints & logs             
+│   ├── ingest/         # download & parse scripts
+│   ├── preprocess/     # cleaning & resampling
+│   ├── annotation/     # VADER, LLM, gold labeling
+│   ├── modeling/       # train.py, inference.py
+│   └── analysis/       # correlation notebook
+├── models/             # fold checkpoints & final_best
 ├── requirements.txt
-├──sentiment.sb            # SLURM Script
-└── README.md
+├── LICENSE
+└── README.md           # ← this file
 ```
 
 ## Installation & Usage
 
-1. **Clone repo**: `git clone <repo_url>`
-2. **Setup environment**:
+1. **Clone**: `git clone <repo_url>`
+2. **Env**:
 
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
-3. **Data ingestion**:
+3. **Ingest data**:
 
    ```bash
-   python src/ingestion/load_zst.py --input data/raw --db data/sqlite/comments.db
+   python src/ingest/load_zst.py --input data/raw --db data/comments.db
    ```
-4. **Preprocessing & EDA**:
+4. **Preprocess & label**:
 
    ```bash
-   jupyter notebook notebooks/eda.ipynb
+   python src/preprocess/clean_and_resample.py
+   python src/annotation/annotate.py --phase all
    ```
-5. **Annotation**:
+5. **Train**:
 
    ```bash
-   python src/annotation/llm_annotator.py --sample 100000
+   python src/modeling/train.py  # runs CV and saves best
    ```
-6. **Training**:
+6. **Analyze correlations**:
 
    ```bash
-   python src/modeling/train.py --phase 1
+   jupyter notebook notebooks/correlation_analysis.ipynb
+   ```
+7. **Inference**:
+
+   ```bash
+   python src/modeling/inference.py --model models/final_best
    ```
 
 ## Tech Stack
 
-* **Language & Env**: Python, Jupyter, `venv`
-* **Data**: SQLite, `yfinance`
-* **NLP & Modeling**: PyTorch, Hugging Face Transformers & Datasets, `llama-cpp`
-* **EDA & Visualization**: scikit‑learn, VADER, Matplotlib, NLTK
-* **Version Control**: Git
+* **Core**: Python, Pandas, NumPy
+* **NLP**: Hugging Face Transformers, Datasets, PyTorch
+* **Stats**: SciPy, statsmodels
+* **Storage**: SQLite
+* **Visuals**: Matplotlib, Seaborn, Jupyter
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT © Your Name

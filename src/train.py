@@ -105,13 +105,13 @@ def main():
 
     # Add phase weights
     weak_train = weak_ds['train'].add_column('phase_weight', [0.1] * len(weak_ds['train']))
-    weak_val = weak_ds['validation']
+    weak_val = weak_ds['validation'].add_column('phase_weight', [1] * len(weak_ds['validation']))
 
     llm_train = llm_ds['train'].add_column('phase_weight', [0.5] * len(llm_ds['train']))
-    llm_val = llm_ds['validation']
+    llm_val = llm_ds['validation'].add_column('phase_weight', [1] * len(llm_ds['validation']))
 
     strong_train = strong_ds['train'].add_column('phase_weight', [1.0] * len(strong_ds['train']))
-    strong_test = strong_ds['test']
+    strong_test = strong_ds['test'].add_column('phase_weight', [1.0] * len(strong_ds['test']))
 
     # Tokenization
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
