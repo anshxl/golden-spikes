@@ -79,14 +79,22 @@ def main():
                                             test_size=0.1,
                                             stratify=weak_df['weak_label'], 
                                             random_state=42)
+    train_weak['phase_weight'] = 0.1
+    val_weak['phase_weight'] = 1.0
+
     train_llm, val_llm = train_test_split(llm_df,
                                             test_size=0.1,
                                             stratify=llm_df['llm_label'], 
                                             random_state=42)
+    train_llm['phase_weight'] = 0.5
+    val_llm['phase_weight'] = 1.0
+
     train_strong, test_strong = train_test_split(gold_df,
                                                 test_size=0.1,
                                                 stratify=gold_df['strong_label'],
                                                 random_state=42)
+    train_strong['phase_weight'] = 1.0
+    test_strong['phase_weight'] = 1.0
 
     # Create HF datasets
     weak_ds = DatasetDict({
@@ -102,16 +110,6 @@ def main():
         'test': Dataset.from_pandas(test_strong)
     })
     print("Datasets created successfully!")
-
-    # Add phase weights
-    weak_train = weak_ds['train'].add_column('phase_weight', [0.1] * len(weak_ds['train']))
-    weak_val = weak_ds['validation'].add_column('phase_weight', [1] * len(weak_ds['validation']))
-
-    llm_train = llm_ds['train'].add_column('phase_weight', [0.5] * len(llm_ds['train']))
-    llm_val = llm_ds['validation'].add_column('phase_weight', [1] * len(llm_ds['validation']))
-
-    strong_train = strong_ds['train'].add_column('phase_weight', [1.0] * len(strong_ds['train']))
-    strong_test = strong_ds['test'].add_column('phase_weight', [1.0] * len(strong_ds['test']))
 
     # Tokenization
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
@@ -149,12 +147,12 @@ def main():
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     fold_scores = []
 
-    for fold, (train_idx, val_idx) in enumerate(kf.split(strong_train)):
-        gold_train = strong_train.select(train_idx)
-        gold_val = strong_train.select(val_idx)
+    for fold, (train_idx, val_idx) in enumerate(kf.split(strong_ds['train'])):
+        gold_train = strong_ds['train'].select(train_idx)
+        gold_val = strong_ds['train'].select(val_idx)
 
         # Combine datasets
-        combined_train = concatenate_datasets([weak_train, llm_train, gold_train]).shuffle(seed=42)
+        combined_train = concatenate_datasets(weak_ds['train'], llm_ds['train'], gold_train).shuffle(seed=42)
 
         # Get class weights for the combined training set
         class_weights = get_class_weights(combined_train['label'], device)
@@ -171,23 +169,40 @@ def main():
                     param.requires_grad = False
         print("Model layers frozen successfully!")
 
-        # Set up optimizer with two param groups
-        no_decay = ["bias","LayerNorm.weight"]
+        # Set up differential optimizer
+        head_prefixes = ('pre_classifier', 'classifier')
+
+        decay_params, no_decay_params, head_params = [], [], []
+
+        for n, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            if any(n.startswith(prefix) for prefix in head_prefixes):
+                head_params.append(p)
+                continue
+            if any(nd in n for nd in ['bias', 'LayerNorm.weight']):
+                no_decay_params.append(p)
+            else:
+                decay_params.append(p)
+
         optimizer_grouped_parameters = [
             {
-                "params": [p for n,p in model.named_parameters() if p.requires_grad and not any(nd in n for nd in no_decay)],
-                "weight_decay": 0.01, "lr": 5e-6
+                "params": decay_params,
+                "weight_decay": 0.01,
+                "lr": 5e-6,
             },
             {
-                "params": [p for n,p in model.named_parameters() if p.requires_grad and any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0, "lr": 5e-6
+                "params": no_decay_params,
+                "weight_decay": 0.0,
+                "lr": 5e-6,
             },
-            # head-only, larger LR
             {
-                "params": model.classifier.parameters(),
-                "weight_decay": 0.0, "lr": 2e-5
+                "params": head_params,
+                "weight_decay": 0.0,
+                "lr": 2e-5,
             },
         ]
+
         optimizer = torch.optim.AdamW(optimizer_grouped_parameters)
         trainer = WeightedTrainer(
             class_weights=class_weights,
