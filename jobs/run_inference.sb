@@ -1,0 +1,18 @@
+#!/bin/bash --login
+#SBATCH --job-name=reddit-inf
+#SBATCH --ntasks=4
+#SBATCH --gpus=v100:1
+#SBATCH --mem=10Gb
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/inference-%j.out
+#SBATCH --error=logs/inference-%j.err
+
+# Load modules
+module purge
+module load Miniforge3
+module load CUDA/12.4.0
+
+# Activate env
+conda activate reddit-env
+
+python -m src.inference
