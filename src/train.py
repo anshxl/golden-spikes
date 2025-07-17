@@ -74,28 +74,27 @@ def main():
     llm_df['label'] = llm_df['llm_label'].map(label2id)
     gold_df['label'] = gold_df['strong_label'].map(label2id)
 
+    # Create phase weight columns
+    weak_df['phase_weight'] = 0.1
+    llm_df['phase_weight'] = 0.5
+    gold_df['phase_weight'] = 1.0
+
     # Train test split
     train_weak, val_weak = train_test_split(weak_df, 
                                             test_size=0.1,
                                             stratify=weak_df['weak_label'], 
                                             random_state=42)
-    train_weak['phase_weight'] = 0.1
-    val_weak['phase_weight'] = 1.0
 
     train_llm, val_llm = train_test_split(llm_df,
                                             test_size=0.1,
                                             stratify=llm_df['llm_label'], 
                                             random_state=42)
-    train_llm['phase_weight'] = 0.5
-    val_llm['phase_weight'] = 1.0
 
     train_strong, test_strong = train_test_split(gold_df,
                                                 test_size=0.1,
                                                 stratify=gold_df['strong_label'],
                                                 random_state=42)
-    train_strong['phase_weight'] = 1.0
-    test_strong['phase_weight'] = 1.0
-
+    
     # Create HF datasets
     weak_ds = DatasetDict({
         'train': Dataset.from_pandas(train_weak),
@@ -120,14 +119,13 @@ def main():
             truncation=True
     )
     # Tokenize datasets
-    weak_ds = weak_ds.map(_tokenize_fn, batched=True)
-    llm_ds = llm_ds.map(_tokenize_fn, batched=True)
+    weak_ds   = weak_ds.map(_tokenize_fn, batched=True)
+    llm_ds    = llm_ds.map(_tokenize_fn, batched=True)
     strong_ds = strong_ds.map(_tokenize_fn, batched=True)
-    print("Datasets tokenized successfully!")
 
-    # Set format for PyTorch
-    for d in [weak_ds, llm_ds, strong_ds]:
-        d.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label', 'phase_weight'])
+    for ds in (weak_ds, llm_ds, strong_ds):
+        ds.set_format(type='torch',
+                    columns=['input_ids','attention_mask','label','phase_weight'])
 
     base_args = dict(
         per_device_train_batch_size=16,
@@ -141,6 +139,7 @@ def main():
         metric_for_best_model='f1',
         greater_is_better=True,
         num_train_epochs=5,
+        remove_unused_columns=False,
         seed=42
     )
 
@@ -152,7 +151,7 @@ def main():
         gold_val = strong_ds['train'].select(val_idx)
 
         # Combine datasets
-        combined_train = concatenate_datasets(weak_ds['train'], llm_ds['train'], gold_train).shuffle(seed=42)
+        combined_train = concatenate_datasets([weak_ds['train'], llm_ds['train'], gold_train]).shuffle(seed=42)
 
         # Get class weights for the combined training set
         class_weights = get_class_weights(combined_train['label'], device)
