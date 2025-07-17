@@ -18,6 +18,13 @@ def focal_loss(logits, labels, gamma=2.0, alpha=None, class_weight=None):
         focal = a * focal
     return focal
 
+# Change dtype to str function
+def change_dtype_to_str(df):
+    for col in df.columns:
+        if df[col].dtype != 'object':
+            df[col] = df[col].astype(str)
+    return df
+
 # Custom Trainer Class
 class WeightedTrainer(Trainer):
     def __init__(self, class_weights, *args, **kwargs):
@@ -59,9 +66,14 @@ def main():
     print("Using device:", device)
 
     # Load datasets
-    weak_df = pd.read_csv('data/phase1/weak_label.csv')
-    llm_df = pd.read_csv('data/phase2/llm_label.csv')
-    gold_df = pd.read_csv('data/phase3/strong_label_cleaned.csv')
+    weak_df = pd.read_csv('data/phase1/weak_label.csv', usecols=['clean_body', 'weak_label'])
+    llm_df = pd.read_csv('data/phase2/llm_label.csv', usecols=['clean_body', 'llm_label'])
+    gold_df = pd.read_csv('data/phase3/strong_label_cleaned.csv', usecols=['clean_body', 'strong_label'])
+
+    # Ensure dtypes are consistent
+    weak_df = change_dtype_to_str(weak_df)
+    llm_df = change_dtype_to_str(llm_df)
+    gold_df = change_dtype_to_str(gold_df)
 
     # Lower case label columns
     weak_df['weak_label'] = weak_df['weak_label'].str.lower()
@@ -97,16 +109,16 @@ def main():
     
     # Create HF datasets
     weak_ds = DatasetDict({
-        'train': Dataset.from_pandas(train_weak),
-        'validation': Dataset.from_pandas(val_weak)
+        'train': Dataset.from_pandas(train_weak, preserve_index=False),
+        'validation': Dataset.from_pandas(val_weak, preserve_index=False)
     })
     llm_ds = DatasetDict({
-        'train': Dataset.from_pandas(train_llm),
-        'validation': Dataset.from_pandas(val_llm)
+        'train': Dataset.from_pandas(train_llm, preserve_index=False),
+        'validation': Dataset.from_pandas(val_llm, preserve_index=False)
     })
     strong_ds = DatasetDict({
-        'train': Dataset.from_pandas(train_strong),
-        'test': Dataset.from_pandas(test_strong)
+        'train': Dataset.from_pandas(train_strong, preserve_index=False),
+        'test': Dataset.from_pandas(test_strong, preserve_index=False)
     })
     print("Datasets created successfully!")
 
@@ -116,12 +128,12 @@ def main():
         return tokenizer(
             batch['clean_body'],
             padding='max_length',
-            truncation=True
+            truncation=True,
     )
     # Tokenize datasets
-    weak_ds   = weak_ds.map(_tokenize_fn, batched=True)
-    llm_ds    = llm_ds.map(_tokenize_fn, batched=True)
-    strong_ds = strong_ds.map(_tokenize_fn, batched=True)
+    weak_ds   = weak_ds.map(_tokenize_fn, batched=True, remove_columns=['clean_body', 'weak_label'])
+    llm_ds    = llm_ds.map(_tokenize_fn, batched=True, remove_columns=['clean_body', 'llm_label'])
+    strong_ds = strong_ds.map(_tokenize_fn, batched=True, remove_columns=['clean_body', 'strong_label'])
 
     for ds in (weak_ds, llm_ds, strong_ds):
         ds.set_format(type='torch',
@@ -135,10 +147,11 @@ def main():
         gradient_accumulation_steps=1,
         eval_strategy='epoch',
         save_strategy='epoch',
+        logging_strategy='epoch',
         load_best_model_at_end=True,
         metric_for_best_model='f1',
         greater_is_better=True,
-        num_train_epochs=5,
+        num_train_epochs=3,
         remove_unused_columns=False,
         seed=42
     )
@@ -158,7 +171,7 @@ def main():
 
         # Model + Trainer Setup
         model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=3).to(device)
-        early_stopping = EarlyStoppingCallback(early_stopping_patience=2)
+        early_stopping = EarlyStoppingCallback(early_stopping_patience=1)
 
         # Freeze first 8 layers
         for name, param in model.named_parameters():
