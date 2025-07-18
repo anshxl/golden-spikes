@@ -39,3 +39,6 @@ def main():
 
     # Save df
     df.to_csv('data/predictions.csv', index=False)
+
+if __name__ == "__main__":
+    main()
