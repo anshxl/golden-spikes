@@ -1,0 +1,47 @@
+Using device: cuda
+Datasets created successfully!
+Model layers frozen successfully!
+Starting training for fold 0...
+{'loss': 0.0368, 'grad_norm': 0.08418972045183182, 'learning_rate': 3.333936084991873e-06, 'epoch': 1.0}
+{'eval_loss': 0.5940131545066833, 'eval_f1': 0.52794353052986, 'eval_runtime': 0.6671, 'eval_samples_per_second': 823.025, 'eval_steps_per_second': 26.984, 'epoch': 1.0}
+{'loss': 0.0323, 'grad_norm': 0.1480160653591156, 'learning_rate': 1.6679888315950754e-06, 'epoch': 2.0}
+{'eval_loss': 0.590059757232666, 'eval_f1': 0.5189784292834565, 'eval_runtime': 0.6434, 'eval_samples_per_second': 853.323, 'eval_steps_per_second': 27.978, 'epoch': 2.0}
+{'train_runtime': 11591.9864, 'train_samples_per_second': 354.937, 'train_steps_per_second': 22.184, 'train_loss': 0.03457781376185938, 'epoch': 2.0}
+Fold 0 F1: 0.5279
+Model layers frozen successfully!
+Starting training for fold 1...
+{'loss': 0.0368, 'grad_norm': 0.10688888281583786, 'learning_rate': 3.3340333030013146e-06, 'epoch': 1.0}
+{'eval_loss': 0.6024034023284912, 'eval_f1': 0.5478816854173808, 'eval_runtime': 0.6513, 'eval_samples_per_second': 842.978, 'eval_steps_per_second': 27.639, 'epoch': 1.0}
+{'loss': 0.0323, 'grad_norm': 0.16701053082942963, 'learning_rate': 1.6681054932064055e-06, 'epoch': 2.0}
+{'eval_loss': 0.6193423867225647, 'eval_f1': 0.5386220997825282, 'eval_runtime': 0.6463, 'eval_samples_per_second': 849.473, 'eval_steps_per_second': 27.852, 'epoch': 2.0}
+{'train_runtime': 11699.5809, 'train_samples_per_second': 351.673, 'train_steps_per_second': 21.98, 'train_loss': 0.0345702091109255, 'epoch': 2.0}
+Fold 1 F1: 0.5479
+Model layers frozen successfully!
+Starting training for fold 2...
+{'loss': 0.0368, 'grad_norm': 0.11048724502325058, 'learning_rate': 3.3340333030013146e-06, 'epoch': 1.0}
+{'eval_loss': 0.5811275243759155, 'eval_f1': 0.5454324831674808, 'eval_runtime': 0.65, 'eval_samples_per_second': 844.58, 'eval_steps_per_second': 27.691, 'epoch': 1.0}
+{'loss': 0.0323, 'grad_norm': 0.16765718162059784, 'learning_rate': 1.668124936808294e-06, 'epoch': 2.0}
+{'eval_loss': 0.5962274670600891, 'eval_f1': 0.5513693966095459, 'eval_runtime': 0.6484, 'eval_samples_per_second': 846.736, 'eval_steps_per_second': 27.762, 'epoch': 2.0}
+{'loss': 0.0311, 'grad_norm': 0.2788197696208954, 'learning_rate': 2.2360142171617007e-09, 'epoch': 3.0}
+{'eval_loss': 0.6100187301635742, 'eval_f1': 0.5406566877700641, 'eval_runtime': 0.651, 'eval_samples_per_second': 843.268, 'eval_steps_per_second': 27.648, 'epoch': 3.0}
+{'train_runtime': 17555.6816, 'train_samples_per_second': 234.364, 'train_steps_per_second': 14.648, 'train_loss': 0.033418121108849175, 'epoch': 3.0}
+Fold 2 F1: 0.5514
+Model layers frozen successfully!
+Starting training for fold 3...
+{'loss': 0.0369, 'grad_norm': 0.09383880347013474, 'learning_rate': 3.334052746603203e-06, 'epoch': 1.0}
+{'eval_loss': 0.5849754214286804, 'eval_f1': 0.5357408128428752, 'eval_runtime': 0.6437, 'eval_samples_per_second': 852.929, 'eval_steps_per_second': 27.965, 'epoch': 1.0}
+{'loss': 0.0324, 'grad_norm': 0.15542714297771454, 'learning_rate': 1.6681054932064055e-06, 'epoch': 2.0}
+{'eval_loss': 0.6018155217170715, 'eval_f1': 0.5238458956919952, 'eval_runtime': 0.6501, 'eval_samples_per_second': 844.546, 'eval_steps_per_second': 27.69, 'epoch': 2.0}
+{'train_runtime': 11614.5932, 'train_samples_per_second': 354.246, 'train_steps_per_second': 22.141, 'train_loss': 0.034608333476122285, 'epoch': 2.0}
+Fold 3 F1: 0.5357
+Model layers frozen successfully!
+Starting training for fold 4...
+{'loss': 0.0369, 'grad_norm': 0.46495118737220764, 'learning_rate': 3.3339944157975378e-06, 'epoch': 1.0}
+{'eval_loss': 0.621265709400177, 'eval_f1': 0.5191255236128819, 'eval_runtime': 0.6495, 'eval_samples_per_second': 843.731, 'eval_steps_per_second': 27.714, 'epoch': 1.0}
+{'loss': 0.0323, 'grad_norm': 0.08267660439014435, 'learning_rate': 1.6680666060026291e-06, 'epoch': 2.0}
+{'eval_loss': 0.6101584434509277, 'eval_f1': 0.5150750821681512, 'eval_runtime': 0.6416, 'eval_samples_per_second': 854.052, 'eval_steps_per_second': 28.053, 'epoch': 2.0}
+{'train_runtime': 11673.124, 'train_samples_per_second': 352.47, 'train_steps_per_second': 22.03, 'train_loss': 0.03458430334880801, 'epoch': 2.0}
+Fold 4 F1: 0.5191
+CV mean F1: 0.5364 ± 0.0121
+Best fold: 2 with F1: 0.5514
+Training script completed successfully!

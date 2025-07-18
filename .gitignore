@@ -23,9 +23,6 @@ data/gold_standard.csv
 data/llm_annotated.csv
 data/phase3/strong_label.csv
 
-# logs
-logs/
-
 # Specific .py files
 src/labeling.py
 src/apply_sentiment.py

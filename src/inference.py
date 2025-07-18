@@ -7,8 +7,8 @@ def main():
     df = pd.read_csv('data/full_comments.csv')
 
     # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained('models/final_model')
-    model = AutoModelForSequenceClassification.from_pretrained('models/final_model')
+    tokenizer = AutoTokenizer.from_pretrained('models/best_model')
+    model = AutoModelForSequenceClassification.from_pretrained('models/best_model')
     pipe = pipeline(
         "sentiment-analysis",
         model=model,
